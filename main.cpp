@@ -21,6 +21,24 @@ const bool bEnableValidationLayer = true;
 #endif
 
 
+VkResult CreateDebugResultCallbackEXT(VkInstance Instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
+	const VkAllocationCallbacks* pAllocators, VkDebugReportCallbackEXT* pCallback) {
+	auto Func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(Instance, "vkCreateDebugReportCallbackEXT");
+	if (Func) {
+		return Func(Instance, pCreateInfo, pAllocators, pCallback);
+	}
+	else {
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+
+void DestroyDebugReportCallbackEXT(VkInstance Instance, VkDebugReportCallbackEXT Callback, const VkAllocationCallbacks* pAllocator) {
+	auto Func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(Instance, "vkDestroyDebugReportCallbackEXT");
+	if (Func) {
+		Func(Instance, Callback, pAllocator);
+	}
+}
+
 class HelloTriangleApp {
 public:
 	void Run() {
@@ -33,6 +51,21 @@ public:
 private:
 	void InitVulkan() {
 		CreateInstance();
+		SetupDebugCallback();
+	}
+
+	void SetupDebugCallback() {
+		if (!bEnableValidationLayer) return;
+
+		VkDebugReportCallbackCreateInfoEXT CreateInfo = {};
+		CreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+		CreateInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+		CreateInfo.pfnCallback = DebugReport;
+		CreateInfo.pUserData = this;
+
+		if (CreateDebugResultCallbackEXT(Instance, &CreateInfo, nullptr, &DebugReportCallback) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to setup debug report callback");
+		}
 	}
 
 	void CreateInstance() {
@@ -52,11 +85,9 @@ private:
 		CreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		CreateInfo.pApplicationInfo = &AppInfo;
 		
-		uint32_t glfwExtensionCount = 0;
-		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-		
-		CreateInfo.enabledExtensionCount = glfwExtensionCount;
-		CreateInfo.ppEnabledExtensionNames = glfwExtensions;
+		auto Extensions = GetRequiredExtensions();
+		CreateInfo.enabledExtensionCount = static_cast<uint32_t>(Extensions.size());
+		CreateInfo.ppEnabledExtensionNames = Extensions.data();
 
 		if (bEnableValidationLayer) {
 			CreateInfo.enabledLayerCount = static_cast<uint32_t>(gValidationLayers.size());
@@ -71,6 +102,32 @@ private:
 		}
 
 		EnumerateExtensions();
+	}
+
+	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReport(
+		VkDebugReportFlagsEXT flags,
+		VkDebugReportObjectTypeEXT objType,
+		uint64_t obj,
+		size_t location,
+		int32_t code,
+		const char* layerPrefix,
+		const char* msg,
+		void* userData) {
+
+		std::cerr << "Validation Layer: " << msg << std::endl;
+
+		return VK_FALSE;
+	}
+
+	std::vector<const char*> GetRequiredExtensions() {
+		uint32_t ExtensionCount = 0;
+		const char** RawExtensions = glfwGetRequiredInstanceExtensions(&ExtensionCount);
+		std::vector<const char*> Extensions(RawExtensions, RawExtensions + ExtensionCount);
+
+		if (bEnableValidationLayer) {
+			Extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		}
+		return Extensions;
 	}
 
 	bool CheckValidationLayersSupport() {
@@ -128,6 +185,10 @@ private:
 	}
 
 	void CleanUp() {
+		if (bEnableValidationLayer) {
+			DestroyDebugReportCallbackEXT(Instance, DebugReportCallback, nullptr);
+		}
+
 		vkDestroyInstance(Instance, nullptr);
 
 		glfwDestroyWindow(Window);
@@ -138,6 +199,7 @@ private:
 
 private:
 	VkInstance Instance;
+	VkDebugReportCallbackEXT DebugReportCallback;
 	GLFWwindow* Window;
 };
 
