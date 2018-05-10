@@ -16,6 +16,11 @@ const std::vector<const char*> gValidationLayers = {
 	"VK_LAYER_LUNARG_standard_validation"
 };
 
+const std::vector<const char*> gDeviceExtensions = {
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
+
 #ifdef NDEBUG
 const bool bEnableValidationLayer = false;
 #else 
@@ -99,7 +104,8 @@ private:
 		DeviceCreateInfo.pQueueCreateInfos = QueueCreateInfos.data();
 		DeviceCreateInfo.pEnabledFeatures = &DeviceFeatures;
 
-		DeviceCreateInfo.enabledExtensionCount = 0;
+		DeviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(gDeviceExtensions.size());
+		DeviceCreateInfo.ppEnabledExtensionNames = gDeviceExtensions.data();
 
 		if (bEnableValidationLayer) {
 			DeviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(gValidationLayers.size());
@@ -152,6 +158,19 @@ private:
 
 		std::cout << "Device Found: " << Properties.deviceName << std::endl;
 
+		QueueFamilyIndices QueueIndex = FindQueueFamilies(Device);
+		if (!QueueIndex.IsComplete()) {
+			return 0;
+		}
+
+		if (!CheckDeviceExtensionSupport(Device)) {
+			return 0;
+		}
+
+		if (!Features.geometryShader) {
+			return 0;
+		}
+
 		int Score = 0;
 		if (Properties.deviceType = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
 			Score += 1000;
@@ -159,14 +178,6 @@ private:
 
 		Score += Properties.limits.maxImageDimension2D;
 
-		QueueFamilyIndices QueueIndex = FindQueueFamilies(Device);
-		if (!QueueIndex.IsComplete()) {
-			return 0;
-		}
-
-		if (!Features.geometryShader) {
-			return 0;
-		}
 		return Score;
 	}
 
@@ -276,6 +287,21 @@ private:
 			Extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 		}
 		return Extensions;
+	}
+
+	bool CheckDeviceExtensionSupport(VkPhysicalDevice Device) {
+		uint32_t ExtensionCount;
+		vkEnumerateDeviceExtensionProperties(Device, nullptr, &ExtensionCount, nullptr);
+
+		std::vector<VkExtensionProperties> AvailableExtensions(ExtensionCount);
+		vkEnumerateDeviceExtensionProperties(Device, nullptr, &ExtensionCount, AvailableExtensions.data());
+
+		std::set<std::string> RequiredExtensions(gDeviceExtensions.begin(), gDeviceExtensions.end());
+		for (const auto& Extension : AvailableExtensions) {
+			RequiredExtensions.erase(Extension.extensionName);
+		}
+
+		return RequiredExtensions.empty();
 	}
 
 	bool CheckValidationLayersSupport() {
