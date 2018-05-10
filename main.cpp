@@ -8,6 +8,7 @@
 #include <functional>
 #include <cstdlib>
 #include <vector>
+#include <map>
 
 
 const std::vector<const char*> gValidationLayers = {
@@ -39,6 +40,13 @@ void DestroyDebugReportCallbackEXT(VkInstance Instance, VkDebugReportCallbackEXT
 	}
 }
 
+struct QueueFamilyIndices {
+	int GraphicsFamily = -1;
+	bool IsComplete() {
+		return GraphicsFamily >= 0;
+	}
+};
+
 class HelloTriangleApp {
 public:
 	void Run() {
@@ -52,6 +60,122 @@ private:
 	void InitVulkan() {
 		CreateInstance();
 		SetupDebugCallback();
+		PickPhysicalDevice();
+		CreateLogicalDevice();
+	}
+
+	void CreateLogicalDevice() {
+		// Setup the queues
+		QueueFamilyIndices QueueIndex = FindQueueFamilies(PhysicalDevice);
+		VkDeviceQueueCreateInfo QueueCreateInfo = {};
+		QueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		QueueCreateInfo.queueFamilyIndex = QueueIndex.GraphicsFamily;
+		QueueCreateInfo.queueCount = 1;
+
+		float QueuePriority = 1.0f;
+		QueueCreateInfo.pQueuePriorities = &QueuePriority;
+
+		VkPhysicalDeviceFeatures DeviceFeatures = {};
+
+		// Create the logical device
+		VkDeviceCreateInfo DeviceCreateInfo = {};
+		DeviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		DeviceCreateInfo.pQueueCreateInfos = &QueueCreateInfo;
+		DeviceCreateInfo.queueCreateInfoCount = 1;
+		DeviceCreateInfo.pEnabledFeatures = &DeviceFeatures;
+
+		DeviceCreateInfo.enabledExtensionCount = 0;
+
+		if (bEnableValidationLayer) {
+			DeviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(gValidationLayers.size());
+			DeviceCreateInfo.ppEnabledLayerNames = gValidationLayers.data();
+		}
+		else {
+			DeviceCreateInfo.enabledLayerCount = 0;
+		}
+
+		if (vkCreateDevice(PhysicalDevice, &DeviceCreateInfo, nullptr, &LogicalDevice) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create Logical Device");
+		}
+
+		vkGetDeviceQueue(LogicalDevice, QueueIndex.GraphicsFamily, 0, &graphicsQueue);
+	}
+
+	void PickPhysicalDevice() {
+		uint32_t DeviceCount;
+		vkEnumeratePhysicalDevices(Instance, &DeviceCount, nullptr);
+
+		if (DeviceCount == 0) {
+			throw std::runtime_error("Failed to find GPUs with Vulkan support");
+		}
+
+		std::vector<VkPhysicalDevice> Devices(DeviceCount);
+		vkEnumeratePhysicalDevices(Instance, &DeviceCount, Devices.data());
+
+		PhysicalDevice = VK_NULL_HANDLE;
+
+		std::multimap<int, VkPhysicalDevice> Candidates;
+		for (auto& Device : Devices) {
+			int Score = RateDeviceSuitablility(Device);
+			Candidates.insert(std::make_pair(Score, Device));
+		}
+
+		if (Candidates.rbegin()->first > 0) {
+			PhysicalDevice = Candidates.rbegin()->second;
+		}
+		else {
+			throw std::runtime_error("Failed to find a suitable GPU");
+		}
+	}
+
+	int RateDeviceSuitablility(VkPhysicalDevice Device) {
+		VkPhysicalDeviceProperties Properties;
+		VkPhysicalDeviceFeatures Features;
+		vkGetPhysicalDeviceProperties(Device, &Properties);
+		vkGetPhysicalDeviceFeatures(Device, &Features);
+
+		std::cout << "Device Found: " << Properties.deviceName << std::endl;
+
+		int Score = 0;
+		if (Properties.deviceType = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+			Score += 1000;
+		}
+
+		Score += Properties.limits.maxImageDimension2D;
+
+		QueueFamilyIndices QueueIndex = FindQueueFamilies(Device);
+		if (!QueueIndex.IsComplete()) {
+			return 0;
+		}
+
+		if (!Features.geometryShader) {
+			return 0;
+		}
+		return Score;
+	}
+
+	QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice Device) {
+		QueueFamilyIndices Indices;
+
+		uint32_t QueueFamilyCount;
+		vkGetPhysicalDeviceQueueFamilyProperties(Device, &QueueFamilyCount, nullptr);
+
+		std::vector<VkQueueFamilyProperties> QueueFamilies(QueueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(Device, &QueueFamilyCount, QueueFamilies.data());
+
+		int Index = 0;
+		for (auto& QueueFamily : QueueFamilies) {
+			if (QueueFamily.queueCount > 0 && QueueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				Indices.GraphicsFamily = Index;
+			}
+
+			if (Indices.IsComplete()) {
+				break;
+			}
+			Index++;
+		}
+
+		return Indices;
 	}
 
 	void SetupDebugCallback() {
@@ -185,6 +309,8 @@ private:
 	}
 
 	void CleanUp() {
+		vkDestroyDevice(LogicalDevice, nullptr);
+
 		if (bEnableValidationLayer) {
 			DestroyDebugReportCallbackEXT(Instance, DebugReportCallback, nullptr);
 		}
@@ -199,6 +325,9 @@ private:
 
 private:
 	VkInstance Instance;
+	VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
+	VkDevice LogicalDevice;
+	VkQueue graphicsQueue;
 	VkDebugReportCallbackEXT DebugReportCallback;
 	GLFWwindow* Window;
 };
