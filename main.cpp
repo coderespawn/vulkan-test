@@ -55,6 +55,12 @@ struct QueueFamilyIndices {
 	}
 };
 
+struct SwapChainSupportDetails {
+	VkSurfaceCapabilitiesKHR Capabilities;
+	std::vector<VkSurfaceFormatKHR> Formats;
+	std::vector<VkPresentModeKHR> PresentModes;
+};
+
 class HelloTriangleApp {
 public:
 	void Run() {
@@ -167,6 +173,14 @@ private:
 			return 0;
 		}
 
+		// Check if the swap chains are supported
+		SwapChainSupportDetails SwapChainSupport = QuerySwapChainSupport(Device);
+		if (SwapChainSupport.Formats.empty() || SwapChainSupport.PresentModes.empty()) 
+		{
+			return 0;
+		}
+
+
 		if (!Features.geometryShader) {
 			return 0;
 		}
@@ -179,6 +193,28 @@ private:
 		Score += Properties.limits.maxImageDimension2D;
 
 		return Score;
+	}
+
+	SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice Device) {
+		SwapChainSupportDetails Details;
+
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Device, Surface, &Details.Capabilities);
+
+		uint32_t FormatCount;
+		vkGetPhysicalDeviceSurfaceFormatsKHR(Device, Surface, &FormatCount, nullptr);
+		if (FormatCount > 0) {
+			Details.Formats.resize(FormatCount);
+			vkGetPhysicalDeviceSurfaceFormatsKHR(Device, Surface, &FormatCount, Details.Formats.data());
+		}
+
+		uint32_t PresentModeCount;
+		vkGetPhysicalDeviceSurfacePresentModesKHR(Device, Surface, &PresentModeCount, nullptr);
+		if (PresentModeCount > 0) {
+			Details.PresentModes.resize(PresentModeCount);
+			vkGetPhysicalDeviceSurfacePresentModesKHR(Device, Surface, &PresentModeCount, Details.PresentModes.data());
+		}
+
+		return Details;
 	}
 
 	QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice Device) {
