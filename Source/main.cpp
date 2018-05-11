@@ -117,7 +117,40 @@ private:
 		CreateLogicalDevice();
 		CreateSwapChain();
 		CreateImageViews();
+		CreateRenderPass();
 		CreateGraphicsPipeline();
+	}
+
+	void CreateRenderPass() {
+		VkAttachmentDescription ColorAttachment = {};
+		ColorAttachment.format = SwapChainImageFormat;
+		ColorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		ColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		ColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		ColorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		ColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		ColorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		ColorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		VkAttachmentReference ColorAttachmentRef = {};
+		ColorAttachmentRef.attachment = 0;
+		ColorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		VkSubpassDescription Subpass = {};
+		Subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		Subpass.colorAttachmentCount = 1;
+		Subpass.pColorAttachments = &ColorAttachmentRef;
+
+		VkRenderPassCreateInfo RenderPassInfo = {};
+		RenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+		RenderPassInfo.attachmentCount = 1;
+		RenderPassInfo.pAttachments = &ColorAttachment;
+		RenderPassInfo.subpassCount = 1;
+		RenderPassInfo.pSubpasses = &Subpass;
+
+		if (vkCreateRenderPass(LogicalDevice, &RenderPassInfo, nullptr, &RenderPass) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create render pass");
+		}
 	}
 
 	void CreateGraphicsPipeline() {
@@ -203,8 +236,61 @@ private:
 		ColorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		ColorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 		ColorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-	}
 
+		VkPipelineColorBlendStateCreateInfo ColorBlendInfo = {};
+		ColorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+		ColorBlendInfo.logicOpEnable = VK_FALSE;
+		ColorBlendInfo.logicOp = VK_LOGIC_OP_COPY;
+		ColorBlendInfo.attachmentCount = 1;
+		ColorBlendInfo.pAttachments = &ColorBlendAttachment;
+		ColorBlendInfo.blendConstants[0] = 0.0f;
+		ColorBlendInfo.blendConstants[1] = 0.0f;
+		ColorBlendInfo.blendConstants[2] = 0.0f;
+		ColorBlendInfo.blendConstants[3] = 0.0f;
+
+		VkDynamicState DynamicStates[] = {
+			VK_DYNAMIC_STATE_VIEWPORT,
+			VK_DYNAMIC_STATE_LINE_WIDTH
+		};
+
+		VkPipelineDynamicStateCreateInfo DynamicStateInfo = {};
+		DynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+		DynamicStateInfo.dynamicStateCount = 2;
+		DynamicStateInfo.pDynamicStates = DynamicStates;
+
+		VkPipelineLayoutCreateInfo PipelineLayoutInfo = {};
+		PipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		PipelineLayoutInfo.setLayoutCount = 0;
+		PipelineLayoutInfo.pSetLayouts = nullptr;
+		PipelineLayoutInfo.pushConstantRangeCount = 0;
+		PipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+		if (vkCreatePipelineLayout(LogicalDevice, &PipelineLayoutInfo, nullptr, &PipelineLayout) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create Pipeline Layout");
+		}
+
+		VkGraphicsPipelineCreateInfo PipelineInfo = {};
+		PipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		PipelineInfo.stageCount = 2;
+		PipelineInfo.pStages = ShaderStages;
+		PipelineInfo.pVertexInputState = &VertexInputInfo;
+		PipelineInfo.pInputAssemblyState = &InputAssemblyInfo;
+		PipelineInfo.pViewportState = &ViewportStateInfo;
+		PipelineInfo.pRasterizationState = &RasterizationInfo;
+		PipelineInfo.pMultisampleState = &MultiSamplingInfo;
+		PipelineInfo.pDepthStencilState = nullptr;
+		PipelineInfo.pColorBlendState = &ColorBlendInfo;
+		PipelineInfo.pDynamicState = nullptr;
+		PipelineInfo.layout = PipelineLayout;
+		PipelineInfo.renderPass = RenderPass;
+		PipelineInfo.subpass = 0;
+		PipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+		PipelineInfo.basePipelineIndex = -1;
+
+		if (vkCreateGraphicsPipelines(LogicalDevice, VK_NULL_HANDLE, 1, &PipelineInfo, nullptr, &GraphicsPipeline) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create graphics pipeline");
+		}
+	}
 
 	VkShaderModule CreateShaderModule(const std::vector<char>& Code) {
 		VkShaderModuleCreateInfo CreateInfo = {};
@@ -643,6 +729,9 @@ private:
 	}
 
 	void CleanUp() {
+		vkDestroyPipeline(LogicalDevice, GraphicsPipeline, nullptr);
+		vkDestroyRenderPass(LogicalDevice, RenderPass, nullptr);
+		vkDestroyPipelineLayout(LogicalDevice, PipelineLayout, nullptr);
 		vkDestroyShaderModule(LogicalDevice, VertShaderModule, nullptr);
 		vkDestroyShaderModule(LogicalDevice, FragShaderModule, nullptr);
 
@@ -676,6 +765,10 @@ private:
 	VkQueue GraphicsQueue;
 	VkQueue PresentQueue;
 	GLFWwindow* Window;
+
+	VkRenderPass RenderPass;
+	VkPipelineLayout PipelineLayout;
+	VkPipeline GraphicsPipeline;
 
 	VkSwapchainKHR SwapChain;
 	VkFormat SwapChainImageFormat;
