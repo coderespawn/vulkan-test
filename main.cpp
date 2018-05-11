@@ -67,6 +67,21 @@ struct SwapChainSupportDetails {
 	std::vector<VkPresentModeKHR> PresentModes;
 };
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReport(
+	VkDebugReportFlagsEXT flags,
+	VkDebugReportObjectTypeEXT objType,
+	uint64_t obj,
+	size_t location,
+	int32_t code,
+	const char* layerPrefix,
+	const char* msg,
+	void* userData) {
+
+	std::cerr << "Validation Layer: " << msg << std::endl;
+
+	return VK_FALSE;
+}
+
 class HelloTriangleApp {
 public:
 	void Run() {
@@ -84,6 +99,7 @@ private:
 		PickPhysicalDevice();
 		CreateLogicalDevice();
 		CreateSwapChain();
+		CreateImageViews();
 	}
 
 	void CreateSurface() {
@@ -258,6 +274,31 @@ private:
 		SwapChainExtent = Extent;
 	}
 
+	void CreateImageViews() {
+		SwapChainImageViews.resize(SwapChainImages.size());
+
+		for (size_t i = 0; i < SwapChainImageViews.size(); i++) {
+			VkImageViewCreateInfo CreateInfo = {};
+			CreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			CreateInfo.image = SwapChainImages[i];
+			CreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			CreateInfo.format = SwapChainImageFormat;
+			CreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			CreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			CreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			CreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			CreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			CreateInfo.subresourceRange.baseMipLevel = 0;
+			CreateInfo.subresourceRange.levelCount = 1;
+			CreateInfo.subresourceRange.baseArrayLayer = 0;
+			CreateInfo.subresourceRange.layerCount = 1;
+
+			if (vkCreateImageView(LogicalDevice, &CreateInfo, nullptr, &SwapChainImageViews[i]) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to create swap image view");
+			}
+		}
+	}
+
 	VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& Capabilities) {
 		if (Capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
 			return Capabilities.currentExtent;
@@ -405,21 +446,6 @@ private:
 		EnumerateExtensions();
 	}
 
-	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReport(
-		VkDebugReportFlagsEXT flags,
-		VkDebugReportObjectTypeEXT objType,
-		uint64_t obj,
-		size_t location,
-		int32_t code,
-		const char* layerPrefix,
-		const char* msg,
-		void* userData) {
-
-		std::cerr << "Validation Layer: " << msg << std::endl;
-
-		return VK_FALSE;
-	}
-
 	std::vector<const char*> GetRequiredExtensions() {
 		uint32_t ExtensionCount = 0;
 		const char** RawExtensions = glfwGetRequiredInstanceExtensions(&ExtensionCount);
@@ -499,6 +525,11 @@ private:
 	}
 
 	void CleanUp() {
+		for (auto ImageView : SwapChainImageViews) {
+			vkDestroyImageView(LogicalDevice, ImageView, nullptr);
+		}
+		SwapChainImageViews.clear();
+
 		vkDestroySwapchainKHR(LogicalDevice, SwapChain, nullptr);
 		vkDestroyDevice(LogicalDevice, nullptr);
 
@@ -525,10 +556,11 @@ private:
 	VkQueue PresentQueue;
 	GLFWwindow* Window;
 
-	std::vector<VkImage> SwapChainImages;
 	VkSwapchainKHR SwapChain;
 	VkFormat SwapChainImageFormat;
 	VkExtent2D SwapChainExtent;
+	std::vector<VkImage> SwapChainImages;
+	std::vector<VkImageView> SwapChainImageViews;
 
 	uint32_t ScreenWidth = 800;
 	uint32_t ScreenHeight = 600;
