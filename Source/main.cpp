@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <algorithm>
+#include <fstream>
 
 
 const std::vector<const char*> gValidationLayers = {
@@ -82,6 +83,22 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReport(
 	return VK_FALSE;
 }
 
+std::vector<char> ReadFile(const std::string& Filename) {
+	std::ifstream File(Filename, std::ios::ate | std::ios::binary);
+
+	if (!File.is_open()) {
+		throw std::runtime_error("Failed to open file: " + Filename);
+	}
+
+	size_t FileSize = (size_t)File.tellg();
+	std::vector<char> Buffer(FileSize);
+	File.seekg(0);
+	File.read(Buffer.data(), FileSize);
+	File.close();
+
+	return Buffer;
+}
+
 class HelloTriangleApp {
 public:
 	void Run() {
@@ -104,7 +121,103 @@ private:
 	}
 
 	void CreateGraphicsPipeline() {
+		auto VertShaderCode = ReadFile("../Shaders/vert.spv");
+		auto FragShaderCode = ReadFile("../Shaders/frag.spv");
 
+		VertShaderModule = CreateShaderModule(VertShaderCode);
+		FragShaderModule = CreateShaderModule(FragShaderCode);
+
+		VkPipelineShaderStageCreateInfo VertexStageInfo = {};
+		VertexStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		VertexStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		VertexStageInfo.module = VertShaderModule;
+		VertexStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo FragStageInfo = {};
+		FragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		FragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		FragStageInfo.module = FragShaderModule;
+		FragStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo ShaderStages[] = { VertexStageInfo, FragStageInfo };
+		VkPipelineVertexInputStateCreateInfo VertexInputInfo = {};
+		VertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		VertexInputInfo.vertexBindingDescriptionCount = 0;
+		VertexInputInfo.pVertexBindingDescriptions = nullptr;
+		VertexInputInfo.vertexAttributeDescriptionCount = 0;
+		VertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+		VkPipelineInputAssemblyStateCreateInfo InputAssemblyInfo = {};
+		InputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		InputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		InputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+		
+		VkViewport Viewport = {};
+		Viewport.x = 0;
+		Viewport.y = 0;
+		Viewport.width = (float)SwapChainExtent.width;
+		Viewport.height = (float)SwapChainExtent.height;
+		Viewport.minDepth = 0.0f;
+		Viewport.maxDepth = 1.0f;
+
+		VkRect2D Scissor = {};
+		Scissor.offset = { 0, 0 };
+		Scissor.extent = SwapChainExtent;
+		
+		VkPipelineViewportStateCreateInfo ViewportStateInfo = {};
+		ViewportStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		ViewportStateInfo.viewportCount = 1;
+		ViewportStateInfo.pViewports = &Viewport;
+		ViewportStateInfo.scissorCount = 1;
+		ViewportStateInfo.pScissors = &Scissor;
+
+		VkPipelineRasterizationStateCreateInfo RasterizationInfo = {};
+		RasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		RasterizationInfo.depthClampEnable = VK_FALSE;
+		RasterizationInfo.rasterizerDiscardEnable = VK_FALSE;
+		RasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
+		RasterizationInfo.lineWidth = 1.0f;
+		RasterizationInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+		RasterizationInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+		RasterizationInfo.depthBiasEnable = VK_FALSE;
+		RasterizationInfo.depthBiasConstantFactor = 0.0f;
+		RasterizationInfo.depthBiasClamp = 0.0f;
+		RasterizationInfo.depthBiasSlopeFactor = 0.0f;
+
+		VkPipelineMultisampleStateCreateInfo MultiSamplingInfo = {};
+		MultiSamplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+		MultiSamplingInfo.sampleShadingEnable = VK_FALSE;
+		MultiSamplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+		MultiSamplingInfo.minSampleShading = 1.0f;
+		MultiSamplingInfo.pSampleMask = nullptr;
+		MultiSamplingInfo.alphaToCoverageEnable = VK_FALSE;
+		MultiSamplingInfo.alphaToOneEnable = VK_FALSE;
+
+		VkPipelineColorBlendAttachmentState ColorBlendAttachment = {};
+		ColorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
+			| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		ColorBlendAttachment.blendEnable = VK_TRUE;
+		ColorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		ColorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		ColorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+		ColorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		ColorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		ColorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
+
+
+	VkShaderModule CreateShaderModule(const std::vector<char>& Code) {
+		VkShaderModuleCreateInfo CreateInfo = {};
+		CreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		CreateInfo.codeSize = Code.size();
+		CreateInfo.pCode = reinterpret_cast<const uint32_t*>(Code.data());
+
+		VkShaderModule ShaderModule;
+		if (vkCreateShaderModule(LogicalDevice, &CreateInfo, nullptr, &ShaderModule) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create shader module");
+		}
+
+		return ShaderModule;
 	}
 
 	void CreateSurface() {
@@ -530,6 +643,9 @@ private:
 	}
 
 	void CleanUp() {
+		vkDestroyShaderModule(LogicalDevice, VertShaderModule, nullptr);
+		vkDestroyShaderModule(LogicalDevice, FragShaderModule, nullptr);
+
 		for (auto ImageView : SwapChainImageViews) {
 			vkDestroyImageView(LogicalDevice, ImageView, nullptr);
 		}
@@ -566,6 +682,9 @@ private:
 	VkExtent2D SwapChainExtent;
 	std::vector<VkImage> SwapChainImages;
 	std::vector<VkImageView> SwapChainImageViews;
+
+	VkShaderModule VertShaderModule;
+	VkShaderModule FragShaderModule;
 
 	uint32_t ScreenWidth = 800;
 	uint32_t ScreenHeight = 600;
