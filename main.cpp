@@ -100,6 +100,11 @@ private:
 		CreateLogicalDevice();
 		CreateSwapChain();
 		CreateImageViews();
+		CreateGraphicsPipeline();
+	}
+
+	void CreateGraphicsPipeline() {
+
 	}
 
 	void CreateSurface() {
