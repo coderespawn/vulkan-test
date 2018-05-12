@@ -119,6 +119,30 @@ private:
 		CreateImageViews();
 		CreateRenderPass();
 		CreateGraphicsPipeline();
+		CreateFrameBuffers();
+	}
+
+	void CreateFrameBuffers() {
+		SwapChainFrameBuffers.resize(SwapChainImageViews.size());
+
+		for (size_t i = 0; i < SwapChainImageViews.size(); i++) {
+			VkImageView Attachments[] = {
+				SwapChainImageViews[i]
+			};
+
+			VkFramebufferCreateInfo FrameBufferInfo = {};
+			FrameBufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			FrameBufferInfo.renderPass = RenderPass;
+			FrameBufferInfo.attachmentCount = 1;
+			FrameBufferInfo.pAttachments = Attachments;
+			FrameBufferInfo.width = SwapChainExtent.width;
+			FrameBufferInfo.height = SwapChainExtent.height;
+			FrameBufferInfo.layers = 1;
+
+			if (vkCreateFramebuffer(LogicalDevice, &FrameBufferInfo, nullptr, &SwapChainFrameBuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to create frame buffer");
+			}
+		}
 	}
 
 	void CreateRenderPass() {
@@ -729,6 +753,11 @@ private:
 	}
 
 	void CleanUp() {
+		for (VkFramebuffer FrameBuffer : SwapChainFrameBuffers) {
+			vkDestroyFramebuffer(LogicalDevice, FrameBuffer, nullptr);
+		}
+		SwapChainFrameBuffers.clear();
+
 		vkDestroyPipeline(LogicalDevice, GraphicsPipeline, nullptr);
 		vkDestroyRenderPass(LogicalDevice, RenderPass, nullptr);
 		vkDestroyPipelineLayout(LogicalDevice, PipelineLayout, nullptr);
@@ -775,6 +804,7 @@ private:
 	VkExtent2D SwapChainExtent;
 	std::vector<VkImage> SwapChainImages;
 	std::vector<VkImageView> SwapChainImageViews;
+	std::vector<VkFramebuffer> SwapChainFrameBuffers; 
 
 	VkShaderModule VertShaderModule;
 	VkShaderModule FragShaderModule;
