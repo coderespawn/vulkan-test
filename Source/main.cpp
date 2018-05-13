@@ -269,17 +269,60 @@ private:
 
 	void CreateVertexBuffers() {
 		VkDeviceSize BufferSize = sizeof(gVertices[0]) * gVertices.size();
-		CreateBuffer(BufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
-			| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VertexBuffer, VertexBufferMemory);
+
+
+		VkBuffer StagingBuffer;
+		VkDeviceMemory StagingBufferMemory;
+		CreateBuffer(BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
+			| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, StagingBuffer, StagingBufferMemory);
 
 		// Copy the data
 		{
 			void* Data;
-			vkMapMemory(LogicalDevice, VertexBufferMemory, 0, BufferSize, 0, &Data);
+			vkMapMemory(LogicalDevice, StagingBufferMemory, 0, BufferSize, 0, &Data);
 			memcpy(Data, gVertices.data(), (size_t)BufferSize);
-			vkUnmapMemory(LogicalDevice, VertexBufferMemory);
+			vkUnmapMemory(LogicalDevice, StagingBufferMemory);
 		}
 
+		CreateBuffer(BufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VertexBuffer, VertexBufferMemory);
+
+		CopyBuffer(StagingBuffer, VertexBuffer, BufferSize);
+
+		vkDestroyBuffer(LogicalDevice, StagingBuffer, nullptr);
+		vkFreeMemory(LogicalDevice, StagingBufferMemory, nullptr);
+	}
+
+	void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size) {
+		VkCommandBufferAllocateInfo AllocInfo = {};
+		AllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		AllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		AllocInfo.commandPool = CommandPool;
+		AllocInfo.commandBufferCount = 1;
+
+		VkCommandBuffer CommandBuffer;
+		vkAllocateCommandBuffers(LogicalDevice, &AllocInfo, &CommandBuffer);
+
+		VkCommandBufferBeginInfo BeginInfo = {};
+		BeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		BeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		vkBeginCommandBuffer(CommandBuffer, &BeginInfo);
+
+		VkBufferCopy CopyRegion = {};
+		CopyRegion.srcOffset = 0;
+		CopyRegion.dstOffset = 0;
+		CopyRegion.size = Size;
+		vkCmdCopyBuffer(CommandBuffer, SrcBuffer, DstBuffer, 1, &CopyRegion);
+		vkEndCommandBuffer(CommandBuffer);
+
+		VkSubmitInfo SubmitInfo = {};
+		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		SubmitInfo.commandBufferCount = 1;
+		SubmitInfo.pCommandBuffers = &CommandBuffer;
+		vkQueueSubmit(GraphicsQueue, 1, &SubmitInfo, nullptr);
+		vkQueueWaitIdle(GraphicsQueue);
+
+		vkFreeCommandBuffers(LogicalDevice, CommandPool, 1, &CommandBuffer);
 	}
 
 	uint32_t FindMemoryType(uint32_t TypeFilter, VkMemoryPropertyFlags Properties) {
