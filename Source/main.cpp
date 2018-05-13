@@ -353,7 +353,6 @@ private:
 			RenderPassInfo.pClearValues = &ClearColor;
 
 			vkCmdBeginRenderPass(CommandBuffer, &RenderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-			vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
 
 			// Setup camera commands
 			{
@@ -372,6 +371,9 @@ private:
 				vkCmdSetScissor(CommandBuffer, 0, 1, &Scissor);
 			}
 
+			// Bind the material
+			vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+
 			// Draw the triangle mesh
 			{
 				VkBuffer VertexBuffers[] = { VertexBuffer };
@@ -380,7 +382,6 @@ private:
 
 				vkCmdDraw(CommandBuffer, static_cast<uint32_t>(gVertices.size()), 1, 0, 0);
 			}
-
 
 			vkCmdEndRenderPass(CommandBuffer);
 			if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
