@@ -69,7 +69,7 @@ struct Vertex {
 };
 
 const std::vector<Vertex> gVertices = {
-	{ { 0.0f, -0.5f },	{ 1.0f, 0.0f, 0.0f } },
+	{ { 0.0f, -0.5f },	{ 1.0f, 1.0f, 1.0f } },
 	{ { 0.5f, 0.5f },	{ 0.0f, 1.0f, 0.0f } },
 	{ { -0.5f, 0.5f },	{ 0.0f, 0.0f, 1.0f } }
 };
@@ -238,37 +238,45 @@ private:
 		CreateSemaphores();
 	}
 
-	void CreateVertexBuffers() {
+	void CreateBuffer(VkDeviceSize Size, VkBufferUsageFlags Usage, VkMemoryPropertyFlags Properties, 
+			VkBuffer& Buffer, VkDeviceMemory& BufferMemory) {
+
 		VkBufferCreateInfo BufferInfo = {};
 		BufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		BufferInfo.size = sizeof(gVertices[0]) * gVertices.size();
-		BufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		BufferInfo.size = Size;
+		BufferInfo.usage = Usage;
 		BufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-		if (vkCreateBuffer(LogicalDevice, &BufferInfo, nullptr, &VertexBuffer) != VK_SUCCESS) {
+		if (vkCreateBuffer(LogicalDevice, &BufferInfo, nullptr, &Buffer) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create vertex buffer");
 		}
 
 		VkMemoryRequirements MemoryRequirements;
-		vkGetBufferMemoryRequirements(LogicalDevice, VertexBuffer, &MemoryRequirements);
+		vkGetBufferMemoryRequirements(LogicalDevice, Buffer, &MemoryRequirements);
 
 		VkMemoryAllocateInfo AllocInfo = {};
 		AllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		AllocInfo.allocationSize = MemoryRequirements.size;
-		AllocInfo.memoryTypeIndex = FindMemoryType(MemoryRequirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		AllocInfo.memoryTypeIndex = FindMemoryType(MemoryRequirements.memoryTypeBits, Properties);
 
-		if (vkAllocateMemory(LogicalDevice, &AllocInfo, nullptr, &VertexBufferMemory) != VK_SUCCESS) {
+		if (vkAllocateMemory(LogicalDevice, &AllocInfo, nullptr, &BufferMemory) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to allocate vertex buffer memory");
 		}
 
-		vkBindBufferMemory(LogicalDevice, VertexBuffer, VertexBufferMemory, 0);
+		vkBindBufferMemory(LogicalDevice, Buffer, BufferMemory, 0);
+
+	}
+
+	void CreateVertexBuffers() {
+		VkDeviceSize BufferSize = sizeof(gVertices[0]) * gVertices.size();
+		CreateBuffer(BufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
+			| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VertexBuffer, VertexBufferMemory);
 
 		// Copy the data
 		{
 			void* Data;
-			vkMapMemory(LogicalDevice, VertexBufferMemory, 0, BufferInfo.size, 0, &Data);
-			memcpy(Data, gVertices.data(), (size_t)BufferInfo.size);
+			vkMapMemory(LogicalDevice, VertexBufferMemory, 0, BufferSize, 0, &Data);
+			memcpy(Data, gVertices.data(), (size_t)BufferSize);
 			vkUnmapMemory(LogicalDevice, VertexBufferMemory);
 		}
 
