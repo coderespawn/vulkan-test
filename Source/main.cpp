@@ -194,8 +194,9 @@ private:
 		CreateGraphicsPipeline();
 		CreateFrameBuffers();
 		CreateCommandPool();
-		CreateCommandBuffers();
 		CreateSemaphores();
+
+		CreateCommandBuffers();
 	}
 
 	void RecreateSwapChain() {
@@ -212,8 +213,8 @@ private:
 		CreateSwapChain();
 		CreateImageViews();
 		CreateRenderPass();
-		CreateGraphicsPipeline();
 		CreateFrameBuffers();
+
 		CreateCommandBuffers();
 	}
 
@@ -265,6 +266,20 @@ private:
 
 			vkCmdBeginRenderPass(CommandBuffer, &RenderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 			vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+
+			VkViewport Viewport = {};
+			Viewport.x = 0;
+			Viewport.y = 0;
+			Viewport.width = (float)SwapChainExtent.width;
+			Viewport.height = (float)SwapChainExtent.height;
+			Viewport.minDepth = 0.0f;
+			Viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(CommandBuffer, 0, 1, &Viewport);
+
+			VkRect2D Scissor = {};
+			Scissor.offset = { 0, 0 };
+			Scissor.extent = SwapChainExtent;
+			vkCmdSetScissor(CommandBuffer, 0, 1, &Scissor);
 
 			vkCmdDraw(CommandBuffer, 3, 1, 0, 0);
 
@@ -384,24 +399,12 @@ private:
 		InputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		InputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 		
-		VkViewport Viewport = {};
-		Viewport.x = 0;
-		Viewport.y = 0;
-		Viewport.width = (float)SwapChainExtent.width;
-		Viewport.height = (float)SwapChainExtent.height;
-		Viewport.minDepth = 0.0f;
-		Viewport.maxDepth = 1.0f;
-
-		VkRect2D Scissor = {};
-		Scissor.offset = { 0, 0 };
-		Scissor.extent = SwapChainExtent;
-		
 		VkPipelineViewportStateCreateInfo ViewportStateInfo = {};
 		ViewportStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 		ViewportStateInfo.viewportCount = 1;
-		ViewportStateInfo.pViewports = &Viewport;
+		ViewportStateInfo.pViewports = nullptr;
 		ViewportStateInfo.scissorCount = 1;
-		ViewportStateInfo.pScissors = &Scissor;
+		ViewportStateInfo.pScissors = nullptr;
 
 		VkPipelineRasterizationStateCreateInfo RasterizationInfo = {};
 		RasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -449,7 +452,7 @@ private:
 
 		VkDynamicState DynamicStates[] = {
 			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_LINE_WIDTH
+			VK_DYNAMIC_STATE_SCISSOR
 		};
 
 		VkPipelineDynamicStateCreateInfo DynamicStateInfo = {};
@@ -479,7 +482,7 @@ private:
 		PipelineInfo.pMultisampleState = &MultiSamplingInfo;
 		PipelineInfo.pDepthStencilState = nullptr;
 		PipelineInfo.pColorBlendState = &ColorBlendInfo;
-		PipelineInfo.pDynamicState = nullptr;
+		PipelineInfo.pDynamicState = &DynamicStateInfo;
 		PipelineInfo.layout = PipelineLayout;
 		PipelineInfo.renderPass = RenderPass;
 		PipelineInfo.subpass = 0;
@@ -934,12 +937,6 @@ private:
 
 		vkFreeCommandBuffers(LogicalDevice, CommandPool, static_cast<uint32_t>(CommandBuffers.size()), CommandBuffers.data());
 
-		vkDestroyPipeline(LogicalDevice, GraphicsPipeline, nullptr);
-		vkDestroyPipelineLayout(LogicalDevice, PipelineLayout, nullptr);
-
-		vkDestroyShaderModule(LogicalDevice, VertShaderModule, nullptr);
-		vkDestroyShaderModule(LogicalDevice, FragShaderModule, nullptr);
-
 		vkDestroyRenderPass(LogicalDevice, RenderPass, nullptr);
 
 		for (auto ImageView : SwapChainImageViews) {
@@ -952,6 +949,12 @@ private:
 
 	void Cleanup() {
 		CleanupSwapChain();
+
+		vkDestroyPipeline(LogicalDevice, GraphicsPipeline, nullptr);
+		vkDestroyPipelineLayout(LogicalDevice, PipelineLayout, nullptr);
+
+		vkDestroyShaderModule(LogicalDevice, VertShaderModule, nullptr);
+		vkDestroyShaderModule(LogicalDevice, FragShaderModule, nullptr);
 
 		vkDestroySemaphore(LogicalDevice, ImageAvailableSemaphore, nullptr);
 		vkDestroySemaphore(LogicalDevice, RenderFinishedSemaphore, nullptr);
