@@ -109,6 +109,58 @@ public:
 	}
 
 private:
+	void MainLoop() {
+		while (!glfwWindowShouldClose(Window)) {
+			glfwPollEvents();
+			DrawFrame();
+		}
+
+		vkDeviceWaitIdle(LogicalDevice);
+	}
+
+	void DrawFrame() {
+		uint32_t ImageIndex;
+		vkAcquireNextImageKHR(LogicalDevice, SwapChain, std::numeric_limits<uint64_t>::max(), 
+			ImageAvailableSemaphore, VK_NULL_HANDLE, &ImageIndex);
+
+		VkSubmitInfo SubmitInfo = {};
+		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkSemaphore WaitSemaphores[] = { ImageAvailableSemaphore };
+		VkPipelineStageFlags WaitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		SubmitInfo.waitSemaphoreCount = 1;
+		SubmitInfo.pWaitSemaphores = WaitSemaphores;
+		SubmitInfo.pWaitDstStageMask = WaitStages;
+
+		SubmitInfo.commandBufferCount = 1;
+		SubmitInfo.pCommandBuffers = &CommandBuffers[ImageIndex];
+
+		VkSemaphore SignalSemaphore[] = { RenderFinishedSemaphore };
+		SubmitInfo.signalSemaphoreCount = 1;
+		SubmitInfo.pSignalSemaphores = SignalSemaphore;
+
+		if (vkQueueSubmit(GraphicsQueue, 1, &SubmitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to submit draw command buffer");
+		}
+
+		VkPresentInfoKHR PresentInfo = {};
+		PresentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		PresentInfo.waitSemaphoreCount = 1;
+		PresentInfo.pWaitSemaphores = SignalSemaphore;
+			
+		VkSwapchainKHR SwapChains[] = { SwapChain };
+		PresentInfo.swapchainCount = 1;
+		PresentInfo.pSwapchains = SwapChains;
+		PresentInfo.pImageIndices = &ImageIndex;
+		PresentInfo.pResults = nullptr;
+
+		vkQueuePresentKHR(PresentQueue, &PresentInfo);
+
+		if (bEnableValidationLayer) {
+			vkQueueWaitIdle(PresentQueue);
+		}
+	}
+
 	void InitVulkan() {
 		CreateInstance();
 		SetupDebugCallback();
@@ -122,6 +174,17 @@ private:
 		CreateFrameBuffers();
 		CreateCommandPool();
 		CreateCommandBuffers();
+		CreateSemaphores();
+	}
+
+	void CreateSemaphores() {
+		VkSemaphoreCreateInfo SemaphoreInfo = {};
+		SemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		
+		if (vkCreateSemaphore(LogicalDevice, &SemaphoreInfo, nullptr, &ImageAvailableSemaphore) != VK_SUCCESS ||
+			vkCreateSemaphore(LogicalDevice, &SemaphoreInfo, nullptr, &RenderFinishedSemaphore) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create semaphore");
+		}
 	}
 
 	void CreateCommandBuffers() {
@@ -227,12 +290,22 @@ private:
 		Subpass.colorAttachmentCount = 1;
 		Subpass.pColorAttachments = &ColorAttachmentRef;
 
+		VkSubpassDependency SubPassDependency = {};
+		SubPassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+		SubPassDependency.dstSubpass = 0;
+		SubPassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		SubPassDependency.srcAccessMask = 0;
+		SubPassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		SubPassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
 		VkRenderPassCreateInfo RenderPassInfo = {};
 		RenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		RenderPassInfo.attachmentCount = 1;
 		RenderPassInfo.pAttachments = &ColorAttachment;
 		RenderPassInfo.subpassCount = 1;
 		RenderPassInfo.pSubpasses = &Subpass;
+		RenderPassInfo.dependencyCount = 1;
+		RenderPassInfo.pDependencies = &SubPassDependency;
 
 		if (vkCreateRenderPass(LogicalDevice, &RenderPassInfo, nullptr, &RenderPass) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create render pass");
@@ -808,13 +881,9 @@ private:
 
 	}
 
-	void MainLoop() {
-		while (!glfwWindowShouldClose(Window)) {
-			glfwPollEvents();
-		}
-	}
-
 	void CleanUp() {
+		vkDestroySemaphore(LogicalDevice, ImageAvailableSemaphore, nullptr);
+		vkDestroySemaphore(LogicalDevice, RenderFinishedSemaphore, nullptr);
 		vkDestroyCommandPool(LogicalDevice, CommandPool, nullptr);
 
 		for (VkFramebuffer FrameBuffer : SwapChainFrameBuffers) {
@@ -871,6 +940,9 @@ private:
 	std::vector<VkImage> SwapChainImages;
 	std::vector<VkImageView> SwapChainImageViews;
 	std::vector<VkFramebuffer> SwapChainFrameBuffers; 
+
+	VkSemaphore ImageAvailableSemaphore;
+	VkSemaphore RenderFinishedSemaphore;
 
 	VkShaderModule VertShaderModule;
 	VkShaderModule FragShaderModule;
