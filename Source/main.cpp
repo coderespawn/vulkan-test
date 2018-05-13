@@ -105,7 +105,7 @@ public:
 		InitWindow();
 		InitVulkan();
 		MainLoop();
-		CleanUp();
+		Cleanup();
 	}
 
 private:
@@ -119,9 +119,23 @@ private:
 	}
 
 	void DrawFrame() {
+		if (bRequestRecreateSwapChain) {
+			bRequestRecreateSwapChain = false;
+			RecreateSwapChain();
+			return;
+		}
+
 		uint32_t ImageIndex;
-		vkAcquireNextImageKHR(LogicalDevice, SwapChain, std::numeric_limits<uint64_t>::max(), 
+		VkResult Result = vkAcquireNextImageKHR(LogicalDevice, SwapChain, std::numeric_limits<uint64_t>::max(), 
 			ImageAvailableSemaphore, VK_NULL_HANDLE, &ImageIndex);
+		
+		if (Result == VK_ERROR_OUT_OF_DATE_KHR) {
+			RecreateSwapChain();
+			return;
+		}
+		else if (Result != VK_SUCCESS && Result != VK_SUBOPTIMAL_KHR) {
+			throw std::runtime_error("Failed to acquire swap chain image");
+		}
 
 		VkSubmitInfo SubmitInfo = {};
 		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -154,7 +168,14 @@ private:
 		PresentInfo.pImageIndices = &ImageIndex;
 		PresentInfo.pResults = nullptr;
 
-		vkQueuePresentKHR(PresentQueue, &PresentInfo);
+		Result = vkQueuePresentKHR(PresentQueue, &PresentInfo);
+		
+		if (Result == VK_ERROR_OUT_OF_DATE_KHR || Result == VK_SUBOPTIMAL_KHR) {
+			RecreateSwapChain();
+		}
+		else if (Result != VK_SUCCESS) {
+			throw std::runtime_error("Failed to present swap chain image");
+		}
 
 		if (bEnableValidationLayer) {
 			vkQueueWaitIdle(PresentQueue);
@@ -175,6 +196,25 @@ private:
 		CreateCommandPool();
 		CreateCommandBuffers();
 		CreateSemaphores();
+	}
+
+	void RecreateSwapChain() {
+		std::cout << "Recreating swap chain" << std::endl;
+
+		int Width, Height;
+		glfwGetWindowSize(Window, &Width, &Height);
+		if (Width == 0 || Height == 0) return;
+
+		vkDeviceWaitIdle(LogicalDevice);
+
+		CleanupSwapChain();
+
+		CreateSwapChain();
+		CreateImageViews();
+		CreateRenderPass();
+		CreateGraphicsPipeline();
+		CreateFrameBuffers();
+		CreateCommandBuffers();
 	}
 
 	void CreateSemaphores() {
@@ -219,7 +259,7 @@ private:
 			RenderPassInfo.renderArea.offset = { 0, 0 };
 			RenderPassInfo.renderArea.extent = SwapChainExtent;
 
-			VkClearValue ClearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+			VkClearValue ClearColor = { 0.0f, 1.0f, 0.0f, 1.0f };
 			RenderPassInfo.clearValueCount = 1;
 			RenderPassInfo.pClearValues = &ClearColor;
 
@@ -875,27 +915,32 @@ private:
 		glfwInit();
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		//glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 		Window = glfwCreateWindow(ScreenWidth, ScreenHeight, "My Vulkan Window", nullptr, nullptr);
 
+		glfwSetFramebufferSizeCallback(Window, &OnWindowResized);
 	}
 
-	void CleanUp() {
-		vkDestroySemaphore(LogicalDevice, ImageAvailableSemaphore, nullptr);
-		vkDestroySemaphore(LogicalDevice, RenderFinishedSemaphore, nullptr);
-		vkDestroyCommandPool(LogicalDevice, CommandPool, nullptr);
+	static void OnWindowResized(GLFWwindow* Window, int, int) {
+		bRequestRecreateSwapChain = true;
+	}
 
+	void CleanupSwapChain() {
 		for (VkFramebuffer FrameBuffer : SwapChainFrameBuffers) {
 			vkDestroyFramebuffer(LogicalDevice, FrameBuffer, nullptr);
 		}
 		SwapChainFrameBuffers.clear();
 
+		vkFreeCommandBuffers(LogicalDevice, CommandPool, static_cast<uint32_t>(CommandBuffers.size()), CommandBuffers.data());
+
 		vkDestroyPipeline(LogicalDevice, GraphicsPipeline, nullptr);
-		vkDestroyRenderPass(LogicalDevice, RenderPass, nullptr);
 		vkDestroyPipelineLayout(LogicalDevice, PipelineLayout, nullptr);
+
 		vkDestroyShaderModule(LogicalDevice, VertShaderModule, nullptr);
 		vkDestroyShaderModule(LogicalDevice, FragShaderModule, nullptr);
+
+		vkDestroyRenderPass(LogicalDevice, RenderPass, nullptr);
 
 		for (auto ImageView : SwapChainImageViews) {
 			vkDestroyImageView(LogicalDevice, ImageView, nullptr);
@@ -903,6 +948,16 @@ private:
 		SwapChainImageViews.clear();
 
 		vkDestroySwapchainKHR(LogicalDevice, SwapChain, nullptr);
+	}
+
+	void Cleanup() {
+		CleanupSwapChain();
+
+		vkDestroySemaphore(LogicalDevice, ImageAvailableSemaphore, nullptr);
+		vkDestroySemaphore(LogicalDevice, RenderFinishedSemaphore, nullptr);
+
+		vkDestroyCommandPool(LogicalDevice, CommandPool, nullptr);
+
 		vkDestroyDevice(LogicalDevice, nullptr);
 
 		if (bEnableValidationLayer) {
@@ -949,7 +1004,10 @@ private:
 
 	uint32_t ScreenWidth = 800;
 	uint32_t ScreenHeight = 600;
+	static bool bRequestRecreateSwapChain;
 };
+
+bool HelloTriangleApp::bRequestRecreateSwapChain = false;
 
 
 int main() {
