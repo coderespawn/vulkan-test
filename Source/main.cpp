@@ -121,6 +121,55 @@ private:
 		CreateGraphicsPipeline();
 		CreateFrameBuffers();
 		CreateCommandPool();
+		CreateCommandBuffers();
+	}
+
+	void CreateCommandBuffers() {
+		CommandBuffers.resize(SwapChainFrameBuffers.size());
+
+		VkCommandBufferAllocateInfo AllocInfo = {};
+		AllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		AllocInfo.commandPool = CommandPool;
+		AllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		AllocInfo.commandBufferCount = (uint32_t)CommandBuffers.size();
+
+		if (vkAllocateCommandBuffers(LogicalDevice, &AllocInfo, CommandBuffers.data()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create command buffers");
+		}
+
+		for (size_t i = 0; i < CommandBuffers.size(); i++) {
+			VkCommandBuffer CommandBuffer = CommandBuffers[i];
+
+			VkCommandBufferBeginInfo BeginInfo = {};
+			BeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			BeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+			BeginInfo.pInheritanceInfo = nullptr;
+
+			if (vkBeginCommandBuffer(CommandBuffer, &BeginInfo) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to begin recording command buffer");
+			}
+
+			VkRenderPassBeginInfo RenderPassInfo = {};
+			RenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			RenderPassInfo.renderPass = RenderPass;
+			RenderPassInfo.framebuffer = SwapChainFrameBuffers[i];
+			RenderPassInfo.renderArea.offset = { 0, 0 };
+			RenderPassInfo.renderArea.extent = SwapChainExtent;
+
+			VkClearValue ClearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+			RenderPassInfo.clearValueCount = 1;
+			RenderPassInfo.pClearValues = &ClearColor;
+
+			vkCmdBeginRenderPass(CommandBuffer, &RenderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+
+			vkCmdDraw(CommandBuffer, 3, 1, 0, 0);
+
+			vkCmdEndRenderPass(CommandBuffer);
+			if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to end command buffer recording");
+			}
+		}
 	}
 
 	void CreateCommandPool() {
@@ -814,6 +863,7 @@ private:
 	VkPipelineLayout PipelineLayout;
 	VkPipeline GraphicsPipeline;
 	VkCommandPool CommandPool;
+	std::vector<VkCommandBuffer> CommandBuffers;
 
 	VkSwapchainKHR SwapChain;
 	VkFormat SwapChainImageFormat;
